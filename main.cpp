@@ -90,7 +90,7 @@ public:
     {
         if (!alive) return;
 
-        if (frames++ < 3) return;        
+        if (frames++ < 4) return;        
         frames = 0;
 
         if (!grid->IsOutOfBounds(x,y))
@@ -126,86 +126,54 @@ public:
 
     bool Collide()
     {
-        if (speed[1] != GRAVITY) return false;
+        if (speed[1] >= 0) return false;
         if (!grid->IsCollision(x, y+1, Zoomba::ascii)) return false;
         bounces++;
+        momentum = 0;
         points += bounces;
-        phase = 0;
-        yFrames = 0;
-        yFrameThreshold = 0;
+        speed[1] = INERTIA + (bounces * 5);
         return true;
     }
 
     void Update()
     {    
+        bool grounded = grid->IsOutOfBounds(x, y+1);
+
+        if (grounded)
+            bounces = 0;
+
         if (userInput == UserInput::Left)
             speed[0] = -1;
         else if (userInput == UserInput::Right)
             speed[0] = 1;
-        else if (userInput == UserInput::Up && grid->IsOutOfBounds(x, y+1))
-            phase = 0;
+        else if (userInput == UserInput::Up && grounded)
+            speed[1] = INERTIA;
         else
             speed[0] = 0;
 
         grid->SetTile(x, y);
 
-        if (yFrames++ >= yFrameThreshold)
+        if (!grounded && speed[1] > -30)
+            speed[1] -= GRAVITY;
+        momentum += speed[1];
+        if (momentum > 40 || momentum < -40)
         {
-            switch (phase)
+            if (speed[1] > 0)
             {
-                case 0: // fast up
-                {
-                    speed[1] = JUMP;
-                    yFrames = 0;
-                    yFrameThreshold = 5;
-                    phase++;
-                    break;
-                }
-                case 1: // base up
-                {
-                    yFrames = 0;
-                    yFrameThreshold = 8;
-                    phase++;
-                    break;
-                }
-                case 2: // slow up
-                {
-                    yFrames = 0; 
-                    yFrameThreshold = 13;
-                    phase++;
-                    break;
-                }
-                case 3: // slow down
-                {
-                    speed[1] = GRAVITY;
-                    yFrames = 0;
-                    yFrameThreshold = 8;
-                    phase++;
-                    break;
-                }
-                case 4: // base down
-                {
-                    yFrames = 0;
-                    yFrameThreshold = 5;
-                    phase++;
-                    break;
-                }
-                case 5: // fast down
-                {
-                    yFrames = 0;
-                    yFrameThreshold = 1;
-                    phase++;
-                    break;
-                }
-                default:
-                {
-                    yFrames = 0;
-                    break;
-                }
+                if (grid->IsOutOfBounds(x, y-1))
+                    hitTheRoof = true;
+                else
+                    y += -1;
             }
-
-            if (!grid->IsOutOfBounds(x, y+speed[1]))
-                y += speed[1];
+            else if (speed[1] < 0)
+            {
+                if (grid->IsOutOfBounds(x, y+1))
+                    speed[1] = 0;
+                else             
+                    y += 1;       
+            }
+                
+            momentum = 0;
         }
 
         if (!grid->IsOutOfBounds(x+speed[0], y))
@@ -214,18 +182,20 @@ public:
         grid->SetTile(x, y, ascii);
     }
 
+    bool IsVictory() const { return hitTheRoof; }
+
     static constexpr char ascii = '@';
 
 private:
     int x{15};
     int y{10};
-    int phase{};
-    int yFrames{};
-    int yFrameThreshold{};
+    int momentum{};
     int points{};
     int bounces{};
+    bool hitTheRoof{};
     static constexpr int JUMP = -1;
     static constexpr int GRAVITY = 1;
+    static constexpr int INERTIA = 20;
     vector<int> speed{0,GRAVITY};
 };
 
@@ -245,10 +215,12 @@ public:
     }
 
     int GetPoints() const { return player.GetPoints(); }
+    bool IsVictory() const { return player.IsVictory(); }
 
 private:
     Player player{};
     Zoomba zoomba{};
+
 };
 
 int main()
@@ -269,15 +241,22 @@ int main()
 
         userInput = input.Read();
 
-        if (userInput == UserInput::Quit) break;
+        if (userInput == UserInput::Quit) return 0;
 
         game.Update();
+
+        if (game.IsVictory())
+        {
+            console.moveCursor(grid->GetHeight()/2, grid->GetWidth()/2);
+            console.print("You win!");
+            console.moveCursor(grid->GetHeight()/2+1, grid->GetWidth()/4);
+            console.print("You earned " + std::to_string(game.GetPoints()) + " points!");
+            break;
+        }
 
         render.Draw(grid->GetTiles());
     }
 
-    console.moveCursor(grid->GetHeight()/2, grid->GetWidth()/4);
-    console.print("You earned " + std::to_string(game.GetPoints()) + " points!");
     frame = {1};
     frame.limit();
     frame.limit();
